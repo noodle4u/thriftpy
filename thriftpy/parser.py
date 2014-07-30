@@ -4,8 +4,10 @@
 import functools
 import hashlib
 import itertools
+import os
 import pickle
 import types
+import sys
 
 from .thrift import TType, TPayload, TException
 from . import __version__, __python__
@@ -105,17 +107,21 @@ def parse(schema):
     return result
 
 
-def load(thrift_file, cache=True):
+def load_file(thrift_file, cache=True, module_name=None):
     """Load thrift_file as a module, default use cache to accelerate
     tokenize processing.
 
     Set cache to False if you don't want to load from cache.
+
+    the result is a none standard python module,we can't pickle it,
+    use load_module to get a pickleble thrift_schema
     """
     global _thriftloader
     if thrift_file in _thriftloader:
         return _thriftloader[thrift_file]
 
-    module_name = thrift_file[:thrift_file.find('.')]
+    module_name = module_name if module_name is not None \
+        else thrift_file[:thrift_file.find('.')]
 
     with open(thrift_file, "r") as fp:
         schema = fp.read()
@@ -273,6 +279,56 @@ def load(thrift_file, cache=True):
 
         setattr(service_cls, "thrift_services", thrift_services)
         setattr(thrift_schema, service.name, service_cls)
+    thrift_schema.__file__ = thrift_file
 
     _thriftloader[thrift_file] = thrift_schema
     return _thriftloader[thrift_file]
+
+
+def gen_module_name(thrift_file):
+    """
+    :param thrift_file:
+    :return: None or module_name
+    try guess module_name from thrift_file.
+    because use the first parent path in sys.path may cause bug if someone
+    change sys.path.so always use the shortest parent_path.
+    """
+    thrift_name = os.path.split(thrift_file)[1]
+    new_thrift_name = thrift_name.replace('.thrift', '_thrift', 1)
+    _thrift_file = os.path.join(os.path.split(thrift_file)[0], new_thrift_name)
+    parent_path_list = []
+    for package_search_path in sys.path:
+        if _thrift_file.startswith(package_search_path):
+            parent_path_list.append(package_search_path)
+    if not parent_path_list:
+        return None
+    shortest = min(parent_path_list, key=len)
+    module_name = _thrift_file[len(shortest):]
+    if module_name[0] == '/':
+        module_name = module_name[1:]
+    module_name = module_name.replace('/', '.')
+    return module_name
+
+
+def load_module(thrift_file, module_name=None, cache=True):
+    """
+    :param thrift_file:
+    :param module_name:
+    :param cache:
+    :return:
+    thrift_file must be a subpath of any path in sys.path
+    load thrift_file as a standard python module.then we can pickle.dumps
+    thrift content
+    """
+    if module_name is None:
+        module_name = gen_module_name(thrift_file)
+    if module_name is None:
+        raise Exception('can\'t load {} as a standard python module.check '
+                        'thrift_file is sub of any sys.path or explict '
+                        'set module_name'.format(thrift_file))
+    module = load_file(thrift_file, cache=cache, module_name=module_name)
+    sys.modules[module_name] = module
+    return module
+
+# backwards compatible
+load = load_file

@@ -3,7 +3,7 @@
 import os
 import sys
 
-from .parser import load
+from .parser import load_module
 
 
 class ThriftImporter(object):
@@ -28,7 +28,7 @@ class ThriftImporter(object):
         else:
             path = fullname
         filename = path.replace('_thrift', '.thrift', 1)
-        thrift = load(filename)
+        thrift = load_module(filename, fullname)
         sys.modules[fullname] = thrift
         return thrift
 
