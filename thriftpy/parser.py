@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # flake8: noqa
+import copy
 
 import functools
 import hashlib
@@ -290,20 +291,23 @@ def gen_module_name(thrift_file):
     :param thrift_file:
     :return: None or module_name
     try guess module_name from thrift_file.
-    because use the first parent path in sys.path may cause bug if someone
-    change sys.path.so always use the shortest parent_path.
     """
     thrift_name = os.path.split(thrift_file)[1]
     new_thrift_name = thrift_name.replace('.thrift', '_thrift', 1)
     _thrift_file = os.path.join(os.path.split(thrift_file)[0], new_thrift_name)
-    parent_path_list = []
-    for package_search_path in sys.path:
+    parent_path = None
+    _sys_path = copy.copy(sys.path)
+    #fix python shell add '' to sys.path
+    for index, path in enumerate(_sys_path):
+        if path == '':
+            _sys_path[index] = os.getcwd()
+    for package_search_path in _sys_path:
         if _thrift_file.startswith(package_search_path):
-            parent_path_list.append(package_search_path)
-    if not parent_path_list:
+            parent_path = package_search_path
+            break
+    if parent_path is None:
         return None
-    shortest = min(parent_path_list, key=len)
-    module_name = _thrift_file[len(shortest):]
+    module_name = _thrift_file[len(parent_path):]
     if module_name[0] == '/':
         module_name = module_name[1:]
     module_name = module_name.replace('/', '.')
