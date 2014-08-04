@@ -125,8 +125,7 @@ def load_file(thrift_file, cache=True, module_name=None):
     if _thriftloader_key in _thriftloader:
         return _thriftloader[_thriftloader_key]
 
-    module_name = module_name if module_name is not None \
-        else thrift_file[:thrift_file.find('.')]
+    module_name = module_name if module_name is not None else thrift_file
 
     with open(thrift_file, "r") as fp:
         schema = fp.read()
@@ -306,7 +305,10 @@ def _gen_path_from_module_name(module_name):
         path = os.path.join(path_prefix, thrift_file)
     else:
         path = module_name
-    filename = path.replace('_thrift', '.thrift', 1)
+    _path = list(path)
+    _path[-7] = '.'
+    filename = ''.join(_path)
+    # filename = path.replace('_thrift', '.thrift', 1)
     return filename
 
 
