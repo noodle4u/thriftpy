@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 # flake8: noqa
-import copy
-
 import functools
 import hashlib
 import itertools
@@ -107,6 +105,7 @@ def parse(schema):
 
     return result
 
+from collections import OrderedDict
 
 def load_file(thrift_file, cache=True, module_name=None):
     """Load thrift_file as a module, default use cache to accelerate
@@ -118,8 +117,13 @@ def load_file(thrift_file, cache=True, module_name=None):
     use load_module to get a pickleble thrift_schema
     """
     global _thriftloader
-    if thrift_file in _thriftloader:
-        return _thriftloader[thrift_file]
+    _thriftloader_key = {
+        'thrift_file': thrift_file,
+        'module_name': module_name,
+    }
+    _thriftloader_key = str(OrderedDict(_thriftloader_key))
+    if _thriftloader_key in _thriftloader:
+        return _thriftloader[_thriftloader_key]
 
     module_name = module_name if module_name is not None \
         else thrift_file[:thrift_file.find('.')]
@@ -282,41 +286,32 @@ def load_file(thrift_file, cache=True, module_name=None):
         setattr(thrift_schema, service.name, service_cls)
     thrift_schema.__file__ = thrift_file
 
-    _thriftloader[thrift_file] = thrift_schema
-    return _thriftloader[thrift_file]
+    _thriftloader[_thriftloader_key] = thrift_schema
+    return _thriftloader[_thriftloader_key]
 
 
-def gen_module_name(thrift_file):
+def _import_module(import_name):
+    if '.' in import_name:
+        module, obj = import_name.rsplit('.', 1)
+        return getattr(__import__(module, None, None, [obj]), obj)
+    else:
+        return __import__(import_name)
+
+
+def _gen_path_from_module_name(module_name):
+    if '.' in module_name:
+        module_name, thrift_file = module_name.rsplit('.', 1)
+        module = _import_module(module_name)
+        path_prefix = os.path.dirname(os.path.abspath(module.__file__))
+        path = os.path.join(path_prefix, thrift_file)
+    else:
+        path = module_name
+    filename = path.replace('_thrift', '.thrift', 1)
+    return filename
+
+
+def load_module(module_name, cache=True):
     """
-    :param thrift_file:
-    :return: None or module_name
-    try guess module_name from thrift_file.
-    """
-    thrift_name = os.path.split(thrift_file)[1]
-    new_thrift_name = thrift_name.replace('.thrift', '_thrift', 1)
-    _thrift_file = os.path.join(os.path.split(thrift_file)[0], new_thrift_name)
-    parent_path = None
-    _sys_path = copy.copy(sys.path)
-    #fix python shell add '' to sys.path
-    for index, path in enumerate(_sys_path):
-        if path == '':
-            _sys_path[index] = os.getcwd()
-    for package_search_path in _sys_path:
-        if _thrift_file.startswith(package_search_path):
-            parent_path = package_search_path
-            break
-    if parent_path is None:
-        return None
-    module_name = _thrift_file[len(parent_path):]
-    if module_name[0] == '/':
-        module_name = module_name[1:]
-    module_name = module_name.replace('/', '.')
-    return module_name
-
-
-def load_module(thrift_file, module_name=None, cache=True):
-    """
-    :param thrift_file:
     :param module_name:
     :param cache:
     :return:
@@ -324,12 +319,7 @@ def load_module(thrift_file, module_name=None, cache=True):
     load thrift_file as a standard python module.then we can pickle.dumps
     thrift content
     """
-    if module_name is None:
-        module_name = gen_module_name(thrift_file)
-    if module_name is None:
-        raise Exception('can\'t load {} as a standard python module.check '
-                        'thrift_file is sub of any sys.path or explict '
-                        'set module_name'.format(thrift_file))
+    thrift_file = _gen_path_from_module_name(module_name)
     module = load_file(thrift_file, cache=cache, module_name=module_name)
     sys.modules[module_name] = module
     return module
