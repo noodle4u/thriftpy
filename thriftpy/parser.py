@@ -314,6 +314,7 @@ def load_module(fullname, cache=True):
     The loader will replace the '_thrift' with '.thrift' and use it as
     filename to locate the real thrift file.
     """
+    module_name = fullname
     if not fullname.endswith("_thrift"):
         raise ImportError(
             "ThriftPy can only load module with '_thrift' suffix")
@@ -330,6 +331,6 @@ def load_module(fullname, cache=True):
         path = fullname
     thrift_file = "{0}.thrift".format(path[:-7])
 
-    module = load(thrift_file, module_name=fullname, cache=cache)
+    module = load(thrift_file, module_name=module_name, cache=cache)
     sys.modules[fullname] = module
     return sys.modules[fullname]
